@@ -13,3 +13,4 @@ main2.py
 matching_fnc.py
 output.ply
 project.py
+*.pyc
