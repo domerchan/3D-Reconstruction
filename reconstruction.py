@@ -161,7 +161,19 @@ def stereo_calibrate(obj_pts_l, obj_pts_f, obj_pts_r, img_pts_l, img_pts_f, img_
                                                                                              criteria = criteria, 
                                                                                              flags = stereocalibration_flags)
     
-    return r_lf, t_lf, e_lf, f_lf, r_fr, t_fr, e_fr, f_fr
+    print('left-right')
+    ret, aux, aux, aux, aux, aux, aux, aux, f_lr = cv.stereoCalibrate(obj_pts_l, 
+                                                                        img_pts_l, 
+                                                                        img_pts_r, 
+                                                                        m_l, 
+                                                                        dist_l, 
+                                                                        m_r, 
+                                                                        dist_r, 
+                                                                        (w,h),
+                                                                        criteria = criteria, 
+                                                                        flags = stereocalibration_flags)
+    
+    return r_lf, t_lf, e_lf, f_lf, r_fr, t_fr, e_fr, f_fr, f_lr
 
 
 
@@ -230,6 +242,50 @@ def calculate_homographic(pts_l, pts_f, pts_r, fund_l, fund_r, width, height):
     _, h_l, h_f = cv.stereoRectifyUncalibrated(pts_l, pts_f, fund_l, (width, height))
     _, h_f2, h_r = cv.stereoRectifyUncalibrated(pts_f, pts_r, fund_r, (width, height))
     return h_l, h_f, h_f2, h_r
+
+
+
+def epilines_intersections(pts_l, pts_f, pts_r, fund_l, fund_r, fund_lr):
+    print('\Comparing epilines...\n')
+    n_images = len(pts_l)
+    distance_r = 0
+    distance_f = 0
+    distance_l = 0
+    for i in range(n_images):
+        print('image ' + str(i+1) + '...\n')
+        # Find epilines intersection in the right image from left and front
+        # points and compare with points in the right image        
+        distance_r += intersect(pts_r[i],
+                              cv.computeCorrespondEpilines(pts_f[i].reshape(-1,1,2), 1, fund_r),
+                              cv.computeCorrespondEpilines(pts_l[i].reshape(-1,1,2), 1, fund_lr))
+        
+        # Find epilines intersection in the front image from left and right
+        # points and compare with points in the right front 
+        distance_f += intersect(pts_f[i],
+                              cv.computeCorrespondEpilines(pts_r[i].reshape(-1,1,2), 1, cv.findFundamentalMat(pts_r[i], pts_f[i])[0]),
+                              cv.computeCorrespondEpilines(pts_l[i].reshape(-1,1,2), 1, fund_l))
+        
+        # Find epilines intersection in the left image from right and front
+        # points and compare with points in the right left 
+        distance_l += intersect(pts_l[i],
+                              cv.computeCorrespondEpilines(pts_f[i].reshape(-1,1,2), 1, cv.findFundamentalMat(pts_f[i], pts_l[i])[0]),
+                              cv.computeCorrespondEpilines(pts_r[i].reshape(-1,1,2), 1, cv.findFundamentalMat(pts_r[i], pts_l[i])[0]))
+        
+    return distance_l/n_images, distance_f/n_images, distance_r/n_images
+
+
+
+def intersect(pts, lines_1, lines_2):
+    n = len(pts)
+    total_dist = 0 
+    for i in range(n):
+        l1 = lines_1[i][0]
+        l2 = lines_2[i][0] 
+        x = (l1[1]*l2[2]-l1[2]*l2[1])/(l1[0]*l2[1]-l1[1]*l2[0])
+        y = (l1[0]*x+l1[2])/-l1[1]
+        
+        total_dist += math.dist([round(x), round(y)], [pts[i][0][0], pts[i][0][1]])
+    return total_dist/n
 
 
 
@@ -322,10 +378,7 @@ def reprojection3D_multi(image, disparity1, disparity2, Q1, Q2):
 
     # compine different pairs construction by smart avergining (by neglicting outlier points in each reconstruction) 
     mask_compined = np.array(mask_1, dtype=np.float16) + np.array(mask_2, dtype=np.float16) 
-    print(np.unique(mask_compined))
     points_compine = (points_1+points_2) / np.expand_dims(mask_compined,axis=-1)
-
-    desparity_compined = (disparity1+disparity2) / mask_compined
 
     # get the final mask for the compination
     final_mask = np.logical_or(mask_1, mask_2)

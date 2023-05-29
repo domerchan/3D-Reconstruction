@@ -17,6 +17,7 @@ images_front, images_left, images_right = read_images('chess', red_factor=red_fa
 h,w = images_front[0].shape[:2]
 
 
+
 #%% CALIBRATION
 
 # Gets the object points, image points, camera matrix, and distortion 
@@ -36,7 +37,7 @@ op_l, op_f, op_r, ip_l, ip_f, ip_r, m_l, m_f, m_r, dist_l, dist_f, dist_r = get_
 #   t_: 3x1 translation vector between the coordinate systems of the cameras.
 #   e_: 3x3 essential matrix.
 #   f_: 3x3 fundamental matrix.
-r_lf, t_lf, e_lf, f_lf, r_fr, t_fr, e_fr, f_fr = stereo_calibrate(op_l, op_f, op_r, ip_l, ip_f, ip_r, m_l, m_f, m_r, dist_l, dist_f, dist_r, w, h)
+r_lf, t_lf, e_lf, f_lf, r_fr, t_fr, e_fr, f_fr, f_lr = stereo_calibrate(op_l, op_f, op_r, ip_l, ip_f, ip_r, m_l, m_f, m_r, dist_l, dist_f, dist_r, w, h)
 
 
 # Find the epilines corresponding to the chess board points in each camera and
@@ -46,6 +47,15 @@ draw_epilines(ip_l, ip_f, ip_r, images_left, images_front, images_right, f_lf, f
 # Gets the homography matrices to rectify the images:
 #   h_: 3x3 rectification homography matrix
 h_l, h_fl, h_fr, h_r = calculate_homographic(ip_l, ip_f, ip_r, f_lf, f_fr, w, h)
+
+
+
+#%% VALIDATION
+
+# Gets the average euclidean distance between the image points (ground true) 
+# and the epiline intersections of the other two cameras:
+#   d_: 
+d_l, d_f, d_r = epilines_intersections(ip_l, ip_f, ip_r, f_lf, f_fr, f_lr)
 
 
 
