@@ -55,6 +55,7 @@ def read_images(path, red_factor = 1):
     return images_front, images_left, images_right
 
 
+
 def get_chess_points(img_l, img_f, img_r):
     print('\nGetting chess board coordinates...\n')
     # Using cv Functions (Criteria) to detect Checkerboard
@@ -130,6 +131,8 @@ def get_chess_points(img_l, img_f, img_r):
     
     return obj_pts_l, obj_pts_f, obj_pts_r, img_pts_l, img_pts_f, img_pts_r, m_l, m_f, m_r, dist_l, dist_f, dist_r
 
+
+
 def stereo_calibrate(obj_pts_l, obj_pts_f, obj_pts_r, img_pts_l, img_pts_f, img_pts_r, m_l, m_f, m_r, dist_l, dist_f, dist_r, w, h):
     print('\nCalibrating cameras in pairs...\n')
     criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -160,6 +163,8 @@ def stereo_calibrate(obj_pts_l, obj_pts_f, obj_pts_r, img_pts_l, img_pts_f, img_
     
     return r_lf, t_lf, e_lf, f_lf, r_fr, t_fr, e_fr, f_fr
 
+
+
 def drawlines(img, lines, pts):
     im = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     r, c = im.shape
@@ -172,6 +177,8 @@ def drawlines(img, lines, pts):
         img_out = cv.circle(img_out, tuple(pt), 5, color, -1)
         
     return img_out
+
+
 
 def draw_epilines(pts_l, pts_f, pts_r, img_l, img_f, img_r, fund_l, fund_r):
     print('\nSaving epilines...\n')
@@ -211,6 +218,8 @@ def draw_epilines(pts_l, pts_f, pts_r, img_l, img_f, img_r, fund_l, fund_r):
         im = drawlines(im_r, lines, pts_r[i].reshape(num_pts,2))
         cv.imwrite('./epilines/Right/' + str(i) + '.jpg', im)
 
+
+
 def calculate_homographic(pts_l, pts_f, pts_r, fund_l, fund_r, width, height):
     print('\nCalculating homographic matrices...\n')
     pts = num_pts * num_img
@@ -221,6 +230,8 @@ def calculate_homographic(pts_l, pts_f, pts_r, fund_l, fund_r, width, height):
     _, h_l, h_f = cv.stereoRectifyUncalibrated(pts_l, pts_f, fund_l, (width, height))
     _, h_f2, h_r = cv.stereoRectifyUncalibrated(pts_f, pts_r, fund_r, (width, height))
     return h_l, h_f, h_f2, h_r
+
+
 
 def rectify_images(img_l, img_f, img_r, h_l, h_fl, h_fr, h_r, width, height, light_name = 'light_A'):
     print('\nRectifying images...\n')
@@ -238,26 +249,9 @@ def rectify_images(img_l, img_f, img_r, h_l, h_fl, h_fr, h_r, width, height, lig
     
     return img_l_rect, img_f_rect, img_r_rect
 
-def compute_disparity(img_l, img_f, img_r, block_size = 5):
-    print('\nComputing disparity StereoBM...\n')
-    img_l = cv.cvtColor(img_l, cv.COLOR_BGR2GRAY)
-    img_f = cv.cvtColor(img_f, cv.COLOR_BGR2GRAY)
-    img_r = cv.cvtColor(img_r, cv.COLOR_BGR2GRAY)
-    
-    stereo = cv.StereoBM_create(numDisparities=5*16, blockSize=block_size)
-    disparity_l = stereo.compute(img_l, img_f)
-    disparity_r = stereo.compute(img_f, img_r)
-    
-    if not os.path.exists('./disparity'):
-        os.makedirs('./disparity')
-        
-    cv.imwrite('./disparity/left_BM.jpg', disparity_l)
-    cv.imwrite('./disparity/right_BM.jpg', disparity_r)
-    
-    return disparity_l, disparity_r
 
 
-def compute_disparity2(img_l, img_f, name, win_size = 50, block_size = 5, 
+def compute_disparity(img_l, img_f, name, win_size = 50, block_size = 5, 
                       ratio = 10, disp_max_diff = 12, spakle_range = 32):
     print('\nComputing disparity StereoSGBM '+ name + '...\n')
     window_size = 3
@@ -299,6 +293,8 @@ def compute_disparity2(img_l, img_f, name, win_size = 50, block_size = 5,
     
     return filtered_img_l
 
+
+
 def calculate_depth(cam_mat_l, cam_mat_r, t_lf, t_fr, width, height):
     baseline_l = np.linalg.norm(t_lf)
     baseline_r = np.linalg.norm(t_fr)
@@ -310,37 +306,6 @@ def calculate_depth(cam_mat_l, cam_mat_r, t_lf, t_fr, width, height):
     
     return Q_l, Q_r
 
-def calculate_depth2(cam_mat_l, cam_mat_r, t_lf, t_fr, width, height):
-    baseline_l = np.linalg.norm(t_lf)
-    baseline_r = np.linalg.norm(t_fr)
-    f_l = cam_mat_l[0,0]
-    f_r = cam_mat_r[0,0]
-    
-    Q_l = np.array([[1, 0, 0, -width/2], [0, 1, 0, -height/2],[0, 0, 0, f_l],[0, 0, -1/baseline_l, -28.8573/baseline_l]])
-    Q_r = np.array([[1, 0, 0, -width/2], [0, 1, 0, -height/2],[0, 0, 0, f_r],[0, 0, -1/baseline_r, -28.8573/baseline_r]])
-    
-    return Q_l, Q_r
-
-def depth_mapping(cm_l, dist_l, cm_f, dist_f, cm_r, dist_r, width, height, R_l, R_r, T_l, T_r):
-    print('\nCalculating R, P matrices, and depth map...\n')
-    R1_l, R2_l, P1_l, P2_l, Ql, roi_left, roi_front = cv.stereoRectify(cm_l, dist_l, cm_f, dist_f, (width, height), R_l, T_l, flags=cv.CALIB_ZERO_DISPARITY)
-    R1_r, R2_r, P1_r, P2_r, Qr, roi_front, roi_right = cv.stereoRectify(cm_f, dist_f, cm_r, dist_r, (width, height), R_r, T_r, flags=cv.CALIB_ZERO_DISPARITY)
-
-    return Ql, Qr, R1_l, P1_l, R1_r, P1_r
-
-def depth_mapping2(cm_l, dist_l, cm_f, dist_f, cm_r, dist_r, width, height, R_l, R_r, T_l, T_r):
-    print('\nCalculating R, P matrices, and depth map...\n')
-    R1_l, R2_l, P1_l, P2_l, Ql, roi_left, roi_front = cv.stereoRectify(cm_l, dist_l, cm_f, dist_f, (width, height), R_l, T_l)
-    R1_r, R2_r, P1_r, P2_r, Qr, roi_front, roi_right = cv.stereoRectify(cm_f, dist_f, cm_r, dist_r, (width, height), R_r, T_r)
-
-    return Ql, Qr, R1_l, P1_l, R1_r, P1_r
-
-def inverse_rectify(disparity_image, cm, d, R1, P1, w, h):
-    print('\nGetting inverse rectify images')
-    # inverse rectify to get the disparity map for the orginal image not the rectified one
-    inv_x, inv_y = cv.initInverseRectificationMap(cm, d, R1, P1, (w, h), cv.CV_32FC1)
-    return cv.remap(disparity_image, inv_x, inv_y, cv.INTER_LINEAR, cv.BORDER_CONSTANT)
-
 
 
 def reprojection3D_multi(image, disparity1, disparity2, Q1, Q2):
@@ -393,152 +358,3 @@ def reprojection3D_multi(image, disparity1, disparity2, Q1, Q2):
     with open('./output.ply', 'w') as f:
         f.write(ply_header % dict(vert_num = len(verts)))
         np.savetxt(f, verts, '%f %f %f %d %d %d')
-        
-        
-        
-        
-"""        
-def reprojection3D_multi4(image, disparity1, disparity2, Q1, Q2):
-    print('\nGenerating 3D points...\n')
-    # generate the 3D points for cam2 image from different pairs
-    points_1 = cv.reprojectImageTo3D(disparity1, Q1)
-    mask_1 = disparity1 > disparity1.min()
-    points_1[~mask_1] = 0
-
-    points_2 = cv.reprojectImageTo3D(disparity2, Q2)
-    mask_2 = disparity2 > disparity2.min()
-    points_2[~mask_2] = 0
-
-
-    # compine different pairs construction by smart avergining (by neglicting outlier points in each reconstruction) 
-    mask_compined = np.array(mask_1, dtype=np.float16) + np.array(mask_2, dtype=np.float16) 
-    print(np.unique(mask_compined))
-    points_compine = (points_1+points_2) / np.expand_dims(mask_compined,axis=-1)
-
-    desparity_compined = (disparity1+disparity2) / mask_compined
-
-    # get the final mask for the compination
-    final_mask = np.logical_or(mask_1, mask_2)
-    colors = image
-
-    out_points = points_compine[final_mask]
-    out_colors = image[final_mask]
-    plt.imshow(points_compine[:,:,-1])
-    plt.show()
-    
-    # create the ply file
-    verts = out_points.reshape(-1,3)
-    colors = out_colors.reshape(-1,3)
-    verts = np.hstack([verts, colors])
-
-    print('\nWritting ply file...\n')
-    # header of ply file
-    ply_header = '''ply
-        format ascii 1.0
-        element vertex %(vert_num)d
-        property float x
-        property float y
-        property float z
-        property uchar blue
-        property uchar green
-        property uchar red
-        end_header
-        '''
-
-    with open('./output3.ply', 'w') as f:
-        f.write(ply_header % dict(vert_num = len(verts)))
-        np.savetxt(f, verts, '%f %f %f %d %d %d')
-
-def reprojection3D_multi(image, disparity1, disparity2, Q1, Q2):
-    print('\nGenerating 3D points...\n')
-    # generate the 3D points for cam2 image from different pairs
-    points_1 = cv.reprojectImageTo3D(disparity1, Q1)
-    mask_1 = disparity1 > disparity1.min()
-    points_1[~mask_1] = 0
-
-    points_2 = cv.reprojectImageTo3D(disparity2, Q2)
-    mask_2 = disparity2 > disparity2.min()
-    points_2[~mask_2] = 0
-
-
-    # compine different pairs construction by smart avergining (by neglicting outlier points in each reconstruction) 
-    mask_compined = np.array(mask_1, dtype=np.float16) + np.array(mask_2, dtype=np.float16) 
-    print(np.unique(mask_compined))
-    points_compine = (points_1+points_2) / np.expand_dims(mask_compined,axis=-1)
-
-    desparity_compined = (disparity1+disparity2) / mask_compined
-
-    # get the final mask for the compination
-    final_mask = np.logical_or(mask_1, mask_2)
-    colors = cv.cvtColor(image, cv.COLOR_RGB2BGR)
-
-    out_points = points_compine[final_mask]
-    out_colors = image[final_mask]
-    plt.imshow(points_compine[:,:,-1])
-    plt.show()
-    
-    if not os.path.exists('./depth'):
-        os.makedirs('./depth')
-
-    cv.imwrite("./depth/depth_compined.jpg", np.array(desparity_compined, dtype=np.uint8))
-
-    # create the ply file
-    verts = out_points.reshape(-1,3)
-    colors = out_colors.reshape(-1,3)
-    verts = np.hstack([verts, colors])
-    
-    verts = verts[~np.isnan(verts).any(axis=1)]
-    verts = verts[~np.isinf(verts).any(axis=1)]
-
-    print('\nWritting ply file...\n')
-    # header of ply file
-    ply_header = '''ply
-    format ascii 1.0
-    element vertex %(vert_num)d
-    property float x
-    property float y
-    property float z
-    property uchar red
-    property uchar green
-    property uchar blue
-    end_header
-    '''
-
-    with open('./output.ply', 'w') as f:
-        f.write(ply_header % dict(vert_num = len(verts)))
-        np.savetxt(f, verts, '%f %f %f %d %d %d')
-        
-def reprojection3D_multi2(image, disparity1, Q1, output='stereo.ply'):
-    print('\nGenerating 3D points...\n')
-    # generate the 3D points for cam2 image from different pairs
-    points_1 = cv.reprojectImageTo3D(disparity1, Q1)
-    mask_1 = disparity1 > disparity1.min()
-    out_points = points_1[mask_1]
-    out_colors = image[mask_1]
-    
-    # create the ply file
-    verts = out_points.reshape(-1,3)
-    colors = out_colors.reshape(-1,3)
-    verts = np.hstack([verts, colors])
-    
-    verts = verts[~np.isnan(verts).any(axis=1)]
-    verts = verts[~np.isinf(verts).any(axis=1)]
-
-    print('\nWritting ply file...\n')
-    # header of ply file
-    ply_header = '''ply
-    format ascii 1.0
-    element vertex %(vert_num)d
-    property float x
-    property float y
-    property float z
-    property uchar blue
-    property uchar green
-    property uchar red
-    end_header
-    '''
-
-    with open(output, 'w') as f:
-        f.write(ply_header %dict(vert_num = len(verts)))
-        np.savetxt(f, verts, '%f %f %f %d %d %d')
-"""
