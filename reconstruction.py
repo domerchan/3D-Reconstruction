@@ -55,129 +55,60 @@ def read_images(path, red_factor = 1):
     return images_front, images_left, images_right
 
 
-
-def get_chess_points(img_l, img_f, img_r):
-    print('\nGetting chess board coordinates...\n')
+def get_chess_points_(img, rows, columns, scale):
     # Using cv Functions (Criteria) to detect Checkerboard
     criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     
-    # Real Dimensions of our Checkboard
-    rows = 6 
-    columns = 9
-    scale = 55 # in mm
-    
     # World Space 
-    world = np.zeros((rows*columns,3), np.float32)
-    world[:,:2] = np.mgrid[0:rows,0:columns].T.reshape(-1,2)
-    world = scale* world
-     
-    # Checkerboard Coordinates
-    img_pts_l = [] # Points on Image Plane (2D)
-    obj_pts_l = [] # Points in World Space (3D)
-    img_pts_f = []
-    obj_pts_f = []
-    img_pts_r = []
-    obj_pts_r = []
+    obj_pts = np.zeros((rows*columns,3), np.float32)
+    obj_pts[:,:2] = np.mgrid[0:rows,0:columns].T.reshape(-1,2)
+    obj_pts = scale* obj_pts
     
-    for i in range(len(img_l)):
-        frame_l = img_l[i]
-        frame_f = img_f[i]
-        frame_r = img_r[i]
-        gray_l = cv.cvtColor(frame_l, cv.COLOR_BGR2GRAY)
-        gray_f = cv.cvtColor(frame_f, cv.COLOR_BGR2GRAY)
-        gray_r = cv.cvtColor(frame_r, cv.COLOR_BGR2GRAY)
-     
-        # Locate Checkerboard
-        ret_l, corners_l = cv.findChessboardCorners(gray_l, (rows, columns), None)
-        ret_f, corners_f = cv.findChessboardCorners(gray_f, (rows, columns), None)
-        ret_r, corners_r = cv.findChessboardCorners(gray_r, (rows, columns), None)
-     
-        if ret_l != True or ret_f != True or ret_r != True:
-            print('\n -- ERROR: we could not find all the chess board coordinates in image ' + str(i+1) + '...')
-            print(' -- try with better quality images (increase reduction factor)..')
-            sys.exit()
-        else:
-            print('Saving coordinates for image ' + str(i+1) + '...\n')
-            # Convolution for Corner Detection 
-            conv_size = (4, 4)
-             
-            # CV Criteria trys Optimizes Corner Detection
-            corners_l = cv.cornerSubPix(gray_l, corners_l, conv_size, (-1, -1), criteria)
-            corners_f = cv.cornerSubPix(gray_f, corners_f, conv_size, (-1, -1), criteria)
-            corners_r = cv.cornerSubPix(gray_r, corners_r, conv_size, (-1, -1), criteria)
-            obj_pts_l.append(world)
-            img_pts_l.append(corners_l)
-            obj_pts_f.append(world)
-            img_pts_f.append(corners_f)
-            obj_pts_r.append(world)
-            img_pts_r.append(corners_r)
-            
-            if not os.path.exists('./corners'):
-                os.makedirs('./corners/Left')
-                os.makedirs('./corners/Front')
-                os.makedirs('./corners/Right')
-                
-            img = cv.drawChessboardCorners(frame_l, (rows,columns), corners_l, True)            
-            cv.imwrite('./corners/Left/' + str(i) + '.jpg', img)
-            img = cv.drawChessboardCorners(frame_f, (rows,columns), corners_f, True)            
-            cv.imwrite('./corners/Front/' + str(i) + '.jpg', img)
-            img = cv.drawChessboardCorners(frame_r, (rows,columns), corners_r, True)            
-            cv.imwrite('./corners/Right/' + str(i) + '.jpg', img)
-            
-    print('\nCalibrating cameras...\n')
-    ret, m_l, dist_l, rvecs, tvecs = cv.calibrateCamera(obj_pts_l, img_pts_l, gray_l.shape[::-1], None, None)
-    ret, m_f, dist_f, rvecs, tvecs = cv.calibrateCamera(obj_pts_f, img_pts_f, gray_f.shape[::-1], None, None)
-    ret, m_r, dist_r, rvecs, tvecs = cv.calibrateCamera(obj_pts_r, img_pts_r, gray_r.shape[::-1], None, None)
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+ 
+    # Locate Checkerboard
+    ret, corners = cv.findChessboardCorners(gray, (rows, columns), None)
+ 
+    if ret != True :
+        print('\n -- ERROR: we could not find all the chess board coordinates in image...')
+        print(' -- try with better quality images (increase reduction factor)..')
+        sys.exit()
+    else:
+        # Convolution for Corner Detection 
+        conv_size = (4, 4)
+         
+        # CV Criteria trys Optimizes Corner Detection
+        img_pts = cv.cornerSubPix(gray, corners, conv_size, (-1, -1), criteria)
     
-    return obj_pts_l, obj_pts_f, obj_pts_r, img_pts_l, img_pts_f, img_pts_r, m_l, m_f, m_r, dist_l, dist_f, dist_r
+    return obj_pts, img_pts
 
 
 
-def stereo_calibrate(obj_pts_l, obj_pts_f, obj_pts_r, img_pts_l, img_pts_f, img_pts_r, m_l, m_f, m_r, dist_l, dist_f, dist_r, w, h):
-    print('\nCalibrating cameras in pairs...\n')
+def calibrate_individual_camera_(obj_pts, img_pts, width, height):
+    ret, cam_mat, dist, rvecs, tvecs = cv.calibrateCamera(obj_pts, img_pts, (width, height), None, None)
+    
+    return cam_mat, dist
+
+
+
+def stereo_calibrate_(obj_pts_l, obj_pts_r, img_pts_l, img_pts_r, m_l, m_r, dist_l, dist_r, w, h):
     criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-    stereocalibration_flags = cv.CALIB_FIX_INTRINSIC
     
-    print('left-front...')
-    ret, cam_mat_l, dist_l, cam_mat_fl, dist_fl, r_lf, t_lf, e_lf, f_lf = cv.stereoCalibrate(obj_pts_l, 
-                                                                                             img_pts_l, 
-                                                                                             img_pts_f, 
-                                                                                             m_l, 
-                                                                                             dist_l, 
-                                                                                             m_f, 
-                                                                                             dist_f, 
-                                                                                             (w,h),
-                                                                                             criteria = criteria, 
-                                                                                             flags = stereocalibration_flags)
-    print('front-right')
-    ret, cam_mat_fr, dist_fr, cam_mat_r, dist_r, r_fr, t_fr, e_fr, f_fr = cv.stereoCalibrate(obj_pts_f, 
-                                                                                             img_pts_f, 
-                                                                                             img_pts_r, 
-                                                                                             m_f, 
-                                                                                             dist_f, 
-                                                                                             m_r, 
-                                                                                             dist_r, 
-                                                                                             (w,h),
-                                                                                             criteria = criteria, 
-                                                                                             flags = stereocalibration_flags)
-    
-    print('left-right')
-    ret, aux, aux, aux, aux, aux, aux, aux, f_lr = cv.stereoCalibrate(obj_pts_l, 
-                                                                        img_pts_l, 
-                                                                        img_pts_r, 
-                                                                        m_l, 
-                                                                        dist_l, 
-                                                                        m_r, 
-                                                                        dist_r, 
-                                                                        (w,h),
-                                                                        criteria = criteria, 
-                                                                        flags = stereocalibration_flags)
-    
-    return r_lf, t_lf, e_lf, f_lf, r_fr, t_fr, e_fr, f_fr, f_lr
+    ret, cam_mat_l, dist_l, cam_mat_r, dist_r, R, T, E, F = cv.stereoCalibrate(obj_pts_l, 
+                                                                               img_pts_l, 
+                                                                               img_pts_r, 
+                                                                               m_l, 
+                                                                               dist_l, 
+                                                                               m_r, 
+                                                                               dist_r, 
+                                                                               (w,h),
+                                                                               criteria = criteria, 
+                                                                               flags = cv.CALIB_FIX_INTRINSIC)
+    return R, T, E, F
 
 
 
-def drawlines(img, lines, pts):
+def drawlines_(img, lines, pts):
     im = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     r, c = im.shape
     
@@ -192,67 +123,48 @@ def drawlines(img, lines, pts):
 
 
 
-def draw_epilines(pts_l, pts_f, pts_r, img_l, img_f, img_r, fund_l, fund_r):
-    print('\nSaving epilines...\n')
+def draw_epilines_(pts_img, pts_clc, img, F, index):    
+    # Find the epilines corresponding to the chess board points in the
+    # front image and drawing them in the left image
+    lines = cv.computeCorrespondEpilines(pts_clc.reshape(-1,1,2), index, F)
+    lines = lines.reshape(-1,3)
+    im = drawlines_(img, lines, pts_img.reshape(num_pts,2))
     
-    if not os.path.exists('./epilines'):
-        os.makedirs('./epilines/Left')
-        os.makedirs('./epilines/Front')
-        os.makedirs('./epilines/Right')
-        
-    for i in range(len(img_l)):
-        print('image ' + str(i+1) + '...\n')
-        im_l = img_l[i]
-        im_f = img_f[i]
-        im_r = img_r[i]
-        
-        # Find the epilines corresponding to the chess board points in the
-        # front image and drawing them in the left image
-        lines = cv.computeCorrespondEpilines(pts_f[i].reshape(-1,1,2), 2, fund_l)
-        lines = lines.reshape(-1,3)
-        im = drawlines(im_l, lines, pts_l[i].reshape(num_pts,2))
-        cv.imwrite('./epilines/Left/' + str(i) + '.jpg', im)
-        
-        # Find the epilines in the left image and drawing them in the front one
-        lines = cv.computeCorrespondEpilines(pts_l[i].reshape(-1,1,2), 1, fund_l)
-        lines = lines.reshape(-1,3) 
-        im = drawlines(im_f, lines, pts_f[i].reshape(num_pts,2))
-        cv.imwrite('./epilines/Front/' + str(i) + '.jpg', im)
-        # Find the epilines in the right image and drawing them in the front one
-        lines = cv.computeCorrespondEpilines(pts_r[i].reshape(-1,1,2), 2, fund_r)
-        lines = lines.reshape(-1,3) 
-        im = drawlines(im_f, lines, pts_f[i].reshape(num_pts,2))
-        cv.imwrite('./epilines/Front/' + str(i+num_img) + '.jpg', im)
-        
-        # Find the epilines in the front image and drawing them in the right one
-        lines = cv.computeCorrespondEpilines(pts_f[i].reshape(-1,1,2), 1, fund_r)
-        lines = lines.reshape(-1,3)
-        im = drawlines(im_r, lines, pts_r[i].reshape(num_pts,2))
-        cv.imwrite('./epilines/Right/' + str(i) + '.jpg', im)
+    return im
+       
 
-
-
-def calculate_homographic(pts_l, pts_f, pts_r, fund_l, fund_r, width, height):
-    print('\nCalculating homographic matrices...\n')
+    
+def calculate_homographic_(pts_l, pts_r, F, width, height):
     pts = num_pts * num_img
+    
     pts_l = np.int32(pts_l).reshape(pts,2)
-    pts_f = np.int32(pts_f).reshape(pts,2)
     pts_r = np.int32(pts_r).reshape(pts,2)
     
-    _, h_l, h_f = cv.stereoRectifyUncalibrated(pts_l, pts_f, fund_l, (width, height))
-    _, h_f2, h_r = cv.stereoRectifyUncalibrated(pts_f, pts_r, fund_r, (width, height))
-    return h_l, h_f, h_f2, h_r
+    _, h_l, h_r = cv.stereoRectifyUncalibrated(pts_l, pts_r, F, (width, height))
+    
+    return h_l, h_r
+
+
+def intersect(pts, lines_1, lines_2):
+    n = len(pts)
+    total_dist = 0 
+    for i in range(n):
+        l1 = lines_1[i][0]
+        l2 = lines_2[i][0] 
+        x = (l1[1]*l2[2]-l1[2]*l2[1])/(l1[0]*l2[1]-l1[1]*l2[0])
+        y = (l1[0]*x+l1[2])/-l1[1]
+        
+        total_dist += math.dist([round(x), round(y)], [pts[i][0][0], pts[i][0][1]])
+    return total_dist/n
 
 
 
 def epilines_intersections(pts_l, pts_f, pts_r, fund_l, fund_r, fund_lr):
-    print('\Comparing epilines...\n')
     n_images = len(pts_l)
     distance_r = 0
     distance_f = 0
     distance_l = 0
     for i in range(n_images):
-        print('image ' + str(i+1) + '...\n')
         # Find epilines intersection in the right image from left and front
         # points and compare with points in the right image        
         distance_r += intersect(pts_r[i],
@@ -275,42 +187,16 @@ def epilines_intersections(pts_l, pts_f, pts_r, fund_l, fund_r, fund_lr):
 
 
 
-def intersect(pts, lines_1, lines_2):
-    n = len(pts)
-    total_dist = 0 
-    for i in range(n):
-        l1 = lines_1[i][0]
-        l2 = lines_2[i][0] 
-        x = (l1[1]*l2[2]-l1[2]*l2[1])/(l1[0]*l2[1]-l1[1]*l2[0])
-        y = (l1[0]*x+l1[2])/-l1[1]
-        
-        total_dist += math.dist([round(x), round(y)], [pts[i][0][0], pts[i][0][1]])
-    return total_dist/n
-
-
-
-def rectify_images(img_l, img_f, img_r, h_l, h_fl, h_fr, h_r, width, height, light_name = 'light_A'):
-    print('\nRectifying images...\n')
-    
-    path = './rect/'+light_name
-    if not os.path.exists(path):
-        os.makedirs(path)
-
+def rectify_images_(img_l, img_r, h_l, h_r, width, height, light_name = 'light_A'):
     img_l_rect = cv.warpPerspective(img_l, h_l, (width, height))
-    img_f_rect = cv.warpPerspective(img_f, h_fl, (width, height))
     img_r_rect = cv.warpPerspective(img_r, h_r, (width, height))
-    cv.imwrite(path + '/left_rectified.jpg', img_l_rect)
-    cv.imwrite(path + '/front_rectified.jpg', img_f_rect)
-    cv.imwrite(path + '/right_rectified.jpg', img_r_rect)
     
-    return img_l_rect, img_f_rect, img_r_rect
+    return img_l_rect, img_r_rect
 
 
-
-def compute_disparity(img_l, img_f, name, win_size = 50, block_size = 5, 
-                      ratio = 10, disp_max_diff = 12, spakle_range = 32):
-    print('\nComputing disparity StereoSGBM '+ name + '...\n')
-    window_size = 3
+def compute_disparity_(img_l, img_r, name, win_size = 50, block_size = 5, 
+                      ratio = 10, disp_max_diff = 12, spakle_range = 32,
+                      window_size = 3):
     
     left_matcher = cv.StereoSGBM_create(minDisparity=-1,
                                         numDisparities=5*16,
@@ -324,7 +210,7 @@ def compute_disparity(img_l, img_f, name, win_size = 50, block_size = 5,
                                         preFilterCap=63,
                                         mode=cv.STEREO_SGBM_MODE_SGBM_3WAY)
 
-    front_matcher = cv.ximgproc.createRightMatcher(left_matcher)
+    right_matcher = cv.ximgproc.createRightMatcher(left_matcher)
     
     lmbda = 80000
     sigma = 1.2
@@ -333,38 +219,91 @@ def compute_disparity(img_l, img_f, name, win_size = 50, block_size = 5,
     wls_filter.setLambda(lmbda)
     wls_filter.setSigmaColor(sigma)
     
-    displ = left_matcher.compute(img_l, img_f)  
-    dispf = front_matcher.compute(img_f, img_l) 
+    displ = left_matcher.compute(img_l, img_r)  
+    dispr = right_matcher.compute(img_r, img_l) 
     displ = np.int16(displ)
-    dispf = np.int16(dispf)
+    dispr = np.int16(dispr)
     
-    filtered_img_l = wls_filter.filter(displ, img_l, None, dispf)
+    filtered_img_l = wls_filter.filter(displ, img_l, None, dispr)
     _, filtered_img_l = cv.threshold(filtered_img_l , 0, 5*16, cv.THRESH_TOZERO)
     filtered_img_l = (filtered_img_l / 16).astype(np.uint8)
-    
-    if not os.path.exists('./disparity'):
-        os.makedirs('./disparity')
-        
-    cv.imwrite('./disparity/' + name + '_SGBM.jpg', filtered_img_l)
     
     return filtered_img_l
 
 
-
-def calculate_depth(cam_mat_l, cam_mat_r, t_lf, t_fr, width, height):
-    baseline_l = np.linalg.norm(t_lf)
-    baseline_r = np.linalg.norm(t_fr)
-    f_l = cam_mat_l[0,0]
-    f_r = cam_mat_r[0,0]
+def calculate_depth_(cam_mat, T, width, height):
+    baseline = np.linalg.norm(T)
     
-    Q_l = np.array([[1, 0, 0, -width/2], [0, 1, 0, -height/2],[0, 0, 0, f_l],[0, 0, -1/baseline_l, t_lf[0][0]/baseline_l]])
-    Q_r = np.array([[1, 0, 0, -width/2], [0, 1, 0, -height/2],[0, 0, 0, f_r],[0, 0, -1/baseline_r, t_fr[0][0]/baseline_r]])
+    f = cam_mat[0,0]
     
-    return Q_l, Q_r
+    Q = np.array([[1, 0, 0, -width/2], [0, 1, 0, -height/2],[0, 0, 0, f],[0, 0, -1/baseline, T[0][0]/baseline]])
+    
+    return Q
 
 
+def reproject_3D_(image, disparity, Q):
+    im3d = cv.reprojectImageTo3D(disparity, Q)
+    colors = cv.cvtColor(image, cv.COLOR_RGB2BGR)
+    mask = disparity > disparity.min()
+    out_points = im3d[mask]
+    out_colors = colors[mask]
+    
+    verts = out_points.reshape(-1,3)
+    colors = out_colors.reshape(-1,3)
+    verts = np.hstack([verts, colors])
+    
+    ply_header = '''ply
+        format ascii 1.0
+        element vertex %(vert_num)d
+        property float x
+        property float y
+        property float z
+        property uchar red
+        property uchar green
+        property uchar blue
+        end_header
+        '''
 
-def reprojection3D_multi(image, disparity1, disparity2, Q1, Q2):
+    with open('./out.ply', 'w') as f:
+        f.write(ply_header % dict(vert_num = len(verts)))
+        np.savetxt(f, verts, '%f %f %f %d %d %d')
+
+
+def reproject_stereo_3D_(image, disparity_l, disparity_r, Q_l, Q_r):
+    im3d_l = cv.reprojectImageTo3D(disparity_l, Q_l)
+    im3d_r = cv.reprojectImageTo3D(disparity_r, Q_r)
+    colors = cv.cvtColor(image, cv.COLOR_RGB2BGR)
+    
+    im3d = (im3d_l + im3d_r) / 2
+    disparity = (disparity_l + disparity_r) / 2
+    
+    mask = disparity > disparity.min()
+    im3d[~mask] = 0
+    
+    verts = im3d.reshape(-1,3)
+    colors = colors.reshape(-1,3)
+    verts = np.hstack([verts, colors])
+    
+    ply_header = '''ply
+        format ascii 1.0
+        element vertex %(vert_num)d
+        property float x
+        property float y
+        property float z
+        property uchar red
+        property uchar green
+        property uchar blue
+        end_header
+        '''
+
+    with open('./reconstruction.ply', 'w') as f:
+        f.write(ply_header % dict(vert_num = len(verts)))
+        np.savetxt(f, verts, '%f %f %f %d %d %d')
+        
+        
+
+
+def reprojection3D_multi_(image, disparity1, disparity2, Q1, Q2):
     print('\nGenerating 3D points...\n')
     # generate the 3D points for cam2 image from different pairs
     points_1 = cv.reprojectImageTo3D(disparity1, Q1)
@@ -378,6 +317,7 @@ def reprojection3D_multi(image, disparity1, disparity2, Q1, Q2):
 
     # compine different pairs construction by smart avergining (by neglicting outlier points in each reconstruction) 
     mask_compined = np.array(mask_1, dtype=np.float16) + np.array(mask_2, dtype=np.float16) 
+    print(np.unique(mask_compined))
     points_compine = (points_1+points_2) / np.expand_dims(mask_compined,axis=-1)
 
     # get the final mask for the compination
@@ -411,3 +351,14 @@ def reprojection3D_multi(image, disparity1, disparity2, Q1, Q2):
     with open('./output.ply', 'w') as f:
         f.write(ply_header % dict(vert_num = len(verts)))
         np.savetxt(f, verts, '%f %f %f %d %d %d')
+        
+        
+        
+def save_images(images, path, name = []):
+    if not os.path.exists(path):
+        os.makedirs(path)
+    for i in range(len(images)):
+        if len(name) == 0:
+            cv.imwrite(path + '/' + str(i) + '.jpg', images[i])
+        else:
+            cv.imwrite(path + '/' + name[i] + '.jpg', images[i])
