@@ -236,7 +236,7 @@ def calculate_depth_(cam_mat, T, width, height):
     
     f = cam_mat[0,0]
     
-    Q = np.array([[1, 0, 0, -width/2], [0, 1, 0, -height/2],[0, 0, 0, f],[0, 0, -1/baseline, T[0][0]/baseline]])
+    Q = np.array([[1, 0, 0, T[0][0]], [0, 1, 0, T[1][0]],[0, 0, 0, f],[0, 0, -1/baseline, T[0][0]/baseline]])
     
     return Q
 
@@ -297,58 +297,6 @@ def reproject_stereo_3D_(image, disparity_l, disparity_r, Q_l, Q_r):
         '''
 
     with open('./reconstruction.ply', 'w') as f:
-        f.write(ply_header % dict(vert_num = len(verts)))
-        np.savetxt(f, verts, '%f %f %f %d %d %d')
-        
-        
-
-
-def reprojection3D_multi_(image, disparity1, disparity2, Q1, Q2):
-    print('\nGenerating 3D points...\n')
-    # generate the 3D points for cam2 image from different pairs
-    points_1 = cv.reprojectImageTo3D(disparity1, Q1)
-    mask_1 = disparity1 > disparity1.min()
-    points_1[~mask_1] = 0
-
-    points_2 = cv.reprojectImageTo3D(disparity2, Q2)
-    mask_2 = disparity2 > disparity2.min()
-    points_2[~mask_2] = 0
-
-
-    # compine different pairs construction by smart avergining (by neglicting outlier points in each reconstruction) 
-    mask_compined = np.array(mask_1, dtype=np.float16) + np.array(mask_2, dtype=np.float16) 
-    print(np.unique(mask_compined))
-    points_compine = (points_1+points_2) / np.expand_dims(mask_compined,axis=-1)
-
-    # get the final mask for the compination
-    final_mask = np.logical_or(mask_1, mask_2)
-    colors = image
-
-    out_points = points_compine[final_mask]
-    out_colors = image[final_mask]
-    plt.imshow(points_compine[:,:,-1])
-    plt.show()
-    
-    # create the ply file
-    verts = out_points.reshape(-1,3)
-    colors = out_colors.reshape(-1,3)
-    verts = np.hstack([verts, colors])
-
-    print('\nWritting ply file...\n')
-    # header of ply file
-    ply_header = '''ply
-        format ascii 1.0
-        element vertex %(vert_num)d
-        property float x
-        property float y
-        property float z
-        property uchar blue
-        property uchar green
-        property uchar red
-        end_header
-        '''
-
-    with open('./output.ply', 'w') as f:
         f.write(ply_header % dict(vert_num = len(verts)))
         np.savetxt(f, verts, '%f %f %f %d %d %d')
         
